@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CashCraft User Interface</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Additional styles to hide/show elements */
+        .hidden {
+            display: none;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .auth-links {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>CashCraft</h1>
+        <div id="auth">
+            <div id="loginForm" class="auth-form">
+                <h2>Login</h2>
+                <label for="loginEmail">Email:</label>
+                <input type="email" id="loginEmail" required>
+                <label for="loginPassword">Password:</label>
+                <input type="password" id="loginPassword" required>
+                <button onclick="login()">Login</button>
+            </div>
+            <div id="signupForm" class="auth-form hidden">
+                <h2>Sign Up</h2>
+                <label for="signupEmail">Email:</label>
+                <input type="email" id="signupEmail" required>
+                <label for="signupPassword">Password:</label>
+                <input type="password" id="signupPassword" required>
+                <button onclick="signup()">Sign Up</button>
+            </div>
+            <div class="auth-links">
+                <p>Already have an account? <a href="#" onclick="showLoginForm()">Login</a></p>
+                <p>New user? <a href="#" onclick="showSignupForm()">Sign Up</a></p>
+            </div>
+        </div>
+        <div id="user-interface" class="hidden">
+            <h1>Welcome, <span id="loggedInUserEmail"></span></h1> <!-- Updated span for email -->
+
+            <div class="balance">
+                <h2>Balance:</h2>
+                <p id="balanceAmount">Loading...</p>
+            </div>
+            <div class="transaction-history">
+                <h2>Transaction History:</h2>
+                <ul id="transactionList">
+                    <!-- Transaction items will be inserted here dynamically -->
+                </ul>
+            </div>
+            <div class="transaction-form">
+                <h2>New Transaction:</h2>
+                <label for="fromEmail">From:</label>
+                <input type="email" id="fromEmail" disabled>
+                <label for="toEmail">To:</label>
+                <input type="email" id="toEmail" required>
+                <label for="amount">Amount:</label>
+                <input type="number" id="amount" step="0.01" required>
+                <button onclick="performTransaction()" id="performTransaction">Perform Transaction</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+
+        </div>
+
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const token = localStorage.getItem('jwtToken');
+
+            if (token) {
+                // Validate token
+                validateToken(token);
+            } else {
+                // Show login form if no token found
+                showLoginForm();
+            }
+        });
+
+        document.getElementById('performTransaction').addEventListener('click', function (event) {
+            event.preventDefault(); // Prevent default form submission behavior
+
+            // Retrieve values from input fields
+            const toEmail = document.getElementById('toEmail').value.trim();
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            // Validate input values
+            if (!toEmail || isNaN(amount) || amount <= 0) {
+                alert('Please enter a valid recipient email and transaction amount.');
+                return;
+            }
+
+            // Perform transaction
+            fetch('/transaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                },
+                body: JSON.stringify({
+                    toEmail: toEmail,
+                    amount: amount
+                })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error('Transaction failed: ' + data.error);
+                    } else {
+                        alert('Transaction successful!');
+                        updateBalanceUI(data.balance); // Update UI with updated balance
+                    }
+                })
+                .catch(error => {
+                    console.error('Error during transaction:', error);
+                    alert('Error during transaction: ' + error.message);
+                });
+        });
+
+
+        function validateToken(token) {
+            fetchUserData();
+            document.getElementById('auth').classList.add('hidden');
+            document.getElementById('user-interface').classList.remove('hidden');
+        }
+
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('signupForm').classList.add('hidden');
+            document.getElementById('user-interface').classList.add('hidden');
+        }
+
+        function showSignupForm() {
+            document.getElementById('signupForm').classList.remove('hidden');
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('user-interface').classList.add('hidden');
+        }
+
+        function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.token) {
+                        localStorage.setItem('jwtToken', data.token);
+                        localStorage.setItem('loggedInUserEmail', email); // Store logged in user's email
+                        alert('Login successful!');
+                        fetchUserData(); // Fetch user data after login
+                        document.getElementById('auth').classList.add('hidden');
+                        document.getElementById('user-interface').classList.remove('hidden');
+                    } else {
+                        alert('Login failed: ' + data.error);
+                    }
+                })
+                .catch(error => console.error('Error during login:', error));
+        }
+
+        function signup() {
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+
+            fetch('/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message === 'Signup successful') {
+                        alert('Signup successful! Please login.');
+                        showLoginForm(); // After signup, show login form automatically
+                    } else {
+                        alert('Signup failed: ' + data.error);
+                    }
+                })
+                .catch(error => console.error('Error during signup:', error));
+        }
+
+
+        function performTransaction() {
+            const fromEmail = document.getElementById('fromEmail').value;
+            const toEmail = document.getElementById('toEmail').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            if (!toEmail || isNaN(amount) || amount <= 0) {
+                alert('Please enter valid recipient email and amount.');
+                return;
+            }
+
+            fetch('/transaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                },
+                body: JSON.stringify({
+                    toEmail: toEmail,
+                    amount: amount
+                })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error('Transaction failed: ' + data.error);
+                    } else {
+                        alert('Transaction successful!');
+                        updateBalanceUI(data.balance); // Update UI with updated balance
+                    }
+                })
+                .catch(error => {
+                    console.error('Error during transaction:', error);
+                    alert('Error during transaction: ' + error.message);
+                });
+        }
+
+
+        function updateBalanceUI(newBalance) {
+            const balanceElement = document.getElementById('balanceAmount');
+            if (balanceElement) {
+                balanceElement.textContent = newBalance.toFixed(2);
+            }
+        }
+
+        function fetchUserData() {
+            const token = localStorage.getItem('jwtToken');
+
+            if (!token) {
+                console.log("No token found. User not logged in.");
+                return;
+            }
+
+            // Fetch balance
+            fetch('/viewbalance', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch balance');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('balanceAmount').textContent = data.balance.toFixed(2);
+                })
+                .catch(error => {
+                    console.error('Error fetching balance:', error);
+                    alert('Failed to fetch balance. Please try again.');
+                });
+
+            // Fetch transaction history
+            fetch('/viewtransactions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch transactions');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const transactionList = document.getElementById('transactionList');
+                    transactionList.innerHTML = '';
+                    data.transactions.forEach(transaction => {
+                        const li = document.createElement('li');
+                        li.textContent = `${transaction.timestamp}: ${transaction.from_email} sent ${transaction.amount} to ${transaction.to_email}`;
+                        transactionList.appendChild(li);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching transactions:', error);
+                    alert('Failed to fetch transactions. Please try again.');
+                });
+
+            // Update logged-in user email
+            const email = localStorage.getItem('loggedInUserEmail');
+            document.getElementById('loggedInUserEmail').textContent = email;
+            document.getElementById('fromEmail').value = email;
+        }
+
+        function logout() {
+            localStorage.removeItem('jwtToken');
+            document.getElementById('auth').classList.remove('hidden');
+            document.getElementById('user-interface').classList.add('hidden');
+        }
+    </script>
+
+</body>
+
+</html>
